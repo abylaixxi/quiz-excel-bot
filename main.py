@@ -1,15 +1,18 @@
 import os
 import logging
 from telegram import Update, InputFile
-from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes
+from telegram.ext import Application, MessageHandler, ContextTypes, filters
 from openpyxl import Workbook
 import re
 from io import BytesIO
 
+# Включаем логи
 logging.basicConfig(level=logging.INFO)
+
+# Получаем токен из переменной окружения
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 
-
+# 📦 Функция для разбора теста
 def parse_quiz(text):
     questions = []
     blocks = re.split(r'\n{2,}', text.strip())
@@ -22,10 +25,11 @@ def parse_quiz(text):
         question_text = lines[0].strip()
         options = []
         correct_raw = ""
+
         for line in lines[1:]:
             if re.match(r'^(ответ|правильный ответ|answer)[:\-]?', line.strip().lower()):
                 correct_raw = line.split(':', 1)[-1].strip()
-            elif re.match(r'^[aа]\)|[бb]\)|[вc]\)|[гd]\)|[еe]\)', line.strip().lower()):
+            elif re.match(r'^[aаbбвcгdеe]\)', line.strip().lower()):
                 options.append(re.sub(r'^[aаbбвcгdеe]\)\s*', '', line.strip(), flags=re.I))
             else:
                 options.append(line.strip())
@@ -45,7 +49,7 @@ def parse_quiz(text):
         correct_index = []
         for ans in re.split(r'[,\s]+', correct_raw):
             ans = ans.lower().strip()
-            index = {'а':1, 'б':2, 'в':3, 'г':4, 'д':5, 'a':1, 'b':2, 'c':3, 'd':4, 'e':5}
+            index = {'а': 1, 'б': 2, 'в': 3, 'г': 4, 'д': 5, 'a': 1, 'b': 2, 'c': 3, 'd': 4, 'e': 5}
             if ans in index:
                 correct_index.append(index[ans])
             elif ans.isdigit():
@@ -58,7 +62,7 @@ def parse_quiz(text):
         questions.append([question_text, qtype] + options[:5] + [correct_index])
     return questions
 
-
+# 📄 Генерация Excel
 def create_excel(questions):
     wb = Workbook()
     ws = wb.active
@@ -74,19 +78,19 @@ def create_excel(questions):
     buffer.seek(0)
     return buffer
 
-
+# 🤖 Ответ на сообщение
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     questions = parse_quiz(text)
     excel_file = create_excel(questions)
     await update.message.reply_document(
         document=InputFile(excel_file, filename="quiz.xlsx"),
-        caption="Готово ✅"
+        caption="✅ Ваш тест готов!"
     )
 
-
+# ▶️ Запуск бота
 def main():
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     print("Бот запущен...")
     app.run_polling()
