@@ -1,26 +1,26 @@
 import os
 import logging
 from telegram import Update, InputFile
-from telegram.ext import Application, MessageHandler, ContextTypes, filters
+from telegram.ext import Application, MessageHandler, CommandHandler, ContextTypes, filters
 from openpyxl import Workbook
 import re
 from io import BytesIO
 
-# Включаем логгирование
+# Включаем логирование
 logging.basicConfig(level=logging.INFO)
 
-# Получаем токен из переменной окружения
+# Получаем токен бота из переменных окружения
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 
-# 📦 Функция разбора теста
+# Функция парсинга теста
 def parse_quiz(text):
     questions = []
     blocks = re.split(r'\n{2,}', text.strip())
 
     for block in blocks:
         lines = block.strip().split('\n')
-        if not lines or len(lines[0].strip()) < 5:
-            continue  # Пропускаем слишком короткие строки
+        if not lines:
+            continue
 
         question_text = lines[0].strip()
         options = []
@@ -34,11 +34,11 @@ def parse_quiz(text):
             else:
                 options.append(line.strip())
 
-        if not question_text or (not correct_raw and not options):
-            continue  # Пропускаем пустые или неполные блоки
-
         if not options:
-            qtype = "Fill-in-the-Blank" if correct_raw else "Open-Ended"
+            if correct_raw:
+                qtype = "Fill-in-the-Blank"
+            else:
+                qtype = "Open-Ended"
         elif ',' in correct_raw:
             qtype = "Checkbox"
         elif correct_raw:
@@ -60,10 +60,9 @@ def parse_quiz(text):
             options.append("")
 
         questions.append([question_text, qtype] + options[:5] + [correct_index])
-
     return questions
 
-# 📄 Создание Excel-файла
+# Создание Excel-файла
 def create_excel(questions):
     wb = Workbook()
     ws = wb.active
@@ -79,18 +78,14 @@ def create_excel(questions):
     buffer.seek(0)
     return buffer
 
-# 🤖 Обработка входящего сообщения
+# Обработка обычных сообщений
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     questions = parse_quiz(text)
 
+    # Проверка на наличие хотя бы одного валидного вопроса
     if not questions:
-        await update.message.reply_text(
-            "❌ Я не смог распознать тест. Убедись, что формат правильный.\n\n"
-            "✅ Пример:\n"
-            "Какая планета самая большая?\n"
-            "а) Земля\nб) Марс\nв) Юпитер\nг) Венера\nОтвет: в"
-        )
+        await update.message.reply_text("❌ Не удалось распознать тест. Убедитесь, что вы отправили его в правильном формате.")
         return
 
     excel_file = create_excel(questions)
@@ -99,9 +94,31 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         caption="✅ Ваш тест готов!"
     )
 
-# ▶️ Запуск бота
+# Обработка команды /start
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    message = (
+        "Привет! 👋 Отправь текст с вопросами, например:\n\n"
+        "1. Кто написал «Войну и мир»?\n"
+        "а) Чехов\n"
+        "б) Пушкин\n"
+        "в) Толстой\n"
+        "г) Достоевский\n"
+        "Ответ: в\n\n"
+        "2. Какие из этих языков программирования?\n"
+        "а) Python\n"
+        "б) HTML\n"
+        "в) JavaScript\n"
+        "г) CSS\n"
+        "д) C#\n"
+        "Ответ: а,в,д\n\n"
+        "Я пришлю тебе Excel-файл для Quizizz 📄"
+    )
+    await update.message.reply_text(message)
+
+# Основной запуск бота
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     print("Бот запущен...")
     app.run_polling()
