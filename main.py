@@ -6,13 +6,13 @@ from openpyxl import Workbook
 import re
 from io import BytesIO
 
-# Включаем логи
+# Включаем логирование
 logging.basicConfig(level=logging.INFO)
 
-# Получаем токен из переменной окружения
+# Получаем токен бота из переменной окружения
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 
-# 📦 Функция для разбора теста
+# 📦 Парсинг теста
 def parse_quiz(text):
     questions = []
     blocks = re.split(r'\n{2,}', text.strip())
@@ -34,6 +34,7 @@ def parse_quiz(text):
             else:
                 options.append(line.strip())
 
+        # Определение типа вопроса
         if not options:
             if correct_raw:
                 qtype = "Fill-in-the-Blank"
@@ -46,6 +47,7 @@ def parse_quiz(text):
         else:
             qtype = "Poll"
 
+        # Определение правильного ответа
         correct_index = []
         for ans in re.split(r'[,\s]+', correct_raw):
             ans = ans.lower().strip()
@@ -78,25 +80,35 @@ def create_excel(questions):
     buffer.seek(0)
     return buffer
 
-# 🤖 Ответ на сообщение
+# 📩 Обработка сообщения
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     questions = parse_quiz(text)
+
+    if not questions:
+        await update.message.reply_text(
+            "❌ Не удалось распознать тест.\n\n"
+            "Пожалуйста, используй формат, как в примере:\n\n"
+            "1. Кто написал «Войну и мир»?\n"
+            "а) Чехов\nб) Пушкин\nв) Толстой\nг) Достоевский\n"
+            "Ответ: в"
+        )
+        return
+
     excel_file = create_excel(questions)
     await update.message.reply_document(
         document=InputFile(excel_file, filename="quiz.xlsx"),
         caption="✅ Ваш тест готов!"
     )
 
-# ✨ Обработчик команды /start
+# 🟢 Обработка команды /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Привет! 👋 Отправь тест в таком формате:\n\n"
+        "Привет! 👋 Отправь текст с вопросами, например:\n\n"
         "1. Кто написал «Войну и мир»?\n"
         "а) Чехов\nб) Пушкин\nв) Толстой\nг) Достоевский\n"
         "Ответ: в\n\n"
-        "Можешь отправить сразу несколько вопросов.\n"
-        "После обработки я пришлю файл для Quizizz 📄"
+        "Я пришлю тебе Excel-файл для Quizizz 📄"
     )
 
 # ▶️ Запуск бота
