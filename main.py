@@ -1,7 +1,7 @@
 import os
 import logging
 from telegram import Update, InputFile
-from telegram.ext import Application, MessageHandler, ContextTypes, filters
+from telegram.ext import Application, MessageHandler, CommandHandler, ContextTypes, filters
 from openpyxl import Workbook
 import re
 from io import BytesIO
@@ -88,13 +88,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         caption="✅ Ваш тест готов!"
     )
 
+# ✨ Обработчик команды /start
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "Привет! 👋 Отправь тест в таком формате:\n\n"
+        "1. Кто написал «Войну и мир»?\n"
+        "а) Чехов\nб) Пушкин\nв) Толстой\nг) Достоевский\n"
+        "Ответ: в\n\n"
+        "Можешь отправить сразу несколько вопросов.\n"
+        "После обработки я пришлю файл для Quizizz 📄"
+    )
+
 # ▶️ Запуск бота
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     print("Бот запущен...")
     app.run_polling()
-
 
 if __name__ == "__main__":
     main()
