@@ -6,18 +6,22 @@ from telegram.ext import Application, MessageHandler, ContextTypes, filters
 from openpyxl import Workbook
 from io import BytesIO
 import re
-import nest_asyncio
 
+from telegram.ext import ApplicationBuilder
+import nest_asyncio
 nest_asyncio.apply()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 
 def parse_quiz(text):
     questions = []
     blocks = re.split(r'\n{2,}', text.strip())
+
     for block in blocks:
         lines = block.strip().split('\n')
         if not lines:
@@ -61,6 +65,7 @@ def parse_quiz(text):
         questions.append([question_text, qtype] + options[:5] + [correct_index])
     return questions
 
+
 def create_excel(questions):
     wb = Workbook()
     ws = wb.active
@@ -75,6 +80,7 @@ def create_excel(questions):
     buffer.seek(0)
     return buffer
 
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     questions = parse_quiz(text)
@@ -87,18 +93,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         caption="✅ Ваш тест готов!"
     )
 
+
 async def main():
-    app = Application.builder().token(BOT_TOKEN).build()
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
+    # Устанавливаем webhook
     await app.bot.set_webhook(url=WEBHOOK_URL)
-    logging.info(f"Webhook установлен: {WEBHOOK_URL}")
+    logger.info(f"Webhook установлен: {WEBHOOK_URL}")
 
+    # Запускаем вебхук-сервер
     await app.run_webhook(
         listen="0.0.0.0",
         port=int(os.environ.get("PORT", 10000)),
-        url_path="",  # webhook_path нельзя — PTB 20.8 больше не использует
+        url_path="webhook"
     )
+
 
 if __name__ == "__main__":
     asyncio.run(main())
