@@ -1,26 +1,24 @@
 import os
 import logging
-import re
-from io import BytesIO
 from telegram import Update, InputFile
 from telegram.ext import Application, MessageHandler, ContextTypes, filters
 from openpyxl import Workbook
+import re
+from io import BytesIO
 
-# Включаем логирование
 logging.basicConfig(level=logging.INFO)
 
-# Получаем токен из переменной окружения
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
+APP_URL = os.environ.get("APP_URL")  # добавим URL из Render
 
-# 📦 Парсинг теста
 def parse_quiz(text):
     questions = []
     blocks = re.split(r'\n{2,}', text.strip())
 
     for block in blocks:
         lines = block.strip().split('\n')
-        if len(lines) < 2:
-            continue  # Слишком мало строк для валидного вопроса
+        if not lines:
+            continue
 
         question_text = lines[0].strip()
         options = []
@@ -34,7 +32,6 @@ def parse_quiz(text):
             else:
                 options.append(line.strip())
 
-        # Определяем тип вопроса
         if not options:
             qtype = "Fill-in-the-Blank" if correct_raw else "Open-Ended"
         elif ',' in correct_raw:
@@ -44,13 +41,12 @@ def parse_quiz(text):
         else:
             qtype = "Poll"
 
-        # Индексы правильных ответов
         correct_index = []
         for ans in re.split(r'[,\s]+', correct_raw):
             ans = ans.lower().strip()
-            index_map = {'а': 1, 'б': 2, 'в': 3, 'г': 4, 'д': 5, 'a': 1, 'b': 2, 'c': 3, 'd': 4, 'e': 5}
-            if ans in index_map:
-                correct_index.append(index_map[ans])
+            index = {'а': 1, 'б': 2, 'в': 3, 'г': 4, 'д': 5, 'a': 1, 'b': 2, 'c': 3, 'd': 4, 'e': 5}
+            if ans in index:
+                correct_index.append(index[ans])
             elif ans.isdigit():
                 correct_index.append(int(ans))
         correct_index = ','.join(map(str, correct_index)) if correct_index else ""
@@ -59,10 +55,8 @@ def parse_quiz(text):
             options.append("")
 
         questions.append([question_text, qtype] + options[:5] + [correct_index])
-
     return questions
 
-# 📄 Создание Excel-файла
 def create_excel(questions):
     wb = Workbook()
     ws = wb.active
@@ -78,22 +72,11 @@ def create_excel(questions):
     buffer.seek(0)
     return buffer
 
-# 🤖 Обработка сообщения
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     questions = parse_quiz(text)
-
     if not questions:
-        await update.message.reply_text(
-            "❌ Не удалось распознать ни одного вопроса.\n\n"
-            "Пример формата:\n\n"
-            "1. Кто написал «Войну и мир»?\n"
-            "а) Чехов\n"
-            "б) Пушкин\n"
-            "в) Толстой\n"
-            "г) Достоевский\n"
-            "Ответ: в"
-        )
+        await update.message.reply_text("❗ Ошибка: не удалось распознать тест. Попробуйте другой формат.")
         return
 
     excel_file = create_excel(questions)
@@ -102,12 +85,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         caption="✅ Ваш тест готов!"
     )
 
-# ▶️ Запуск бота
+async def set_webhook(app_url, bot_token, application):
+    webhook_url = f"{app_url}/webhook"
+    await application.bot.set_webhook(webhook_url)
+    logging.info(f"Webhook установлен: {webhook_url}")
+
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    print("Бот запущен...")
-    app.run_polling()
+
+    async def start():
+        await set_webhook(APP_URL, BOT_TOKEN, app)
+
+    app.run_webhook(
+        listen="0.0.0.0",
+        port=int(os.environ.get("PORT", 10000)),
+        webhook_path="/webhook",
+        on_startup=start
+    )
 
 if __name__ == "__main__":
     main()
