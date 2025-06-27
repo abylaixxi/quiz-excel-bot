@@ -6,6 +6,7 @@ from telegram.ext import ApplicationBuilder, MessageHandler, ContextTypes, filte
 from openpyxl import Workbook
 from io import BytesIO
 import re
+import nest_asyncio
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
@@ -16,6 +17,7 @@ logger = logging.getLogger(__name__)
 def parse_quiz(text):
     questions = []
     blocks = re.split(r'\n{2,}', text.strip())
+
     for block in blocks:
         lines = block.strip().split('\n')
         if not lines:
@@ -32,6 +34,10 @@ def parse_quiz(text):
                 options.append(re.sub(r'^[aаbбвcгdеe]\)\s*', '', line.strip(), flags=re.I))
             else:
                 options.append(line.strip())
+
+        # ❗ Пропускаем, если нет текста и нет ни вариантов, ни ответа
+        if not question_text or (not options and not correct_raw):
+            continue
 
         if not options:
             qtype = "Open-Ended" if not correct_raw else "Fill-in-the-Blank"
@@ -75,10 +81,30 @@ def create_excel(questions):
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
+    logger.info(f"Получен текст:\n{text}")
     questions = parse_quiz(text)
+    logger.info(f"Распознано вопросов: {len(questions)}")
+
     if not questions:
-        await update.message.reply_text("❌ Формат не распознан. Отправь вопросы по образцу.")
+        await update.message.reply_text(
+            "❌ Не удалось распознать ни одного вопроса.\n\n"
+            "Пример формата:\n\n"
+            "1. Кто написал «Войну и мир»?\n"
+            "а) Чехов\n"
+            "б) Пушкин\n"
+            "в) Толстой\n"
+            "г) Достоевский\n"
+            "Ответ: в\n\n"
+            "2. Какие из этих языков программирования?\n"
+            "а) Python\n"
+            "б) HTML\n"
+            "в) JavaScript\n"
+            "г) CSS\n"
+            "д) C#\n"
+            "Ответ: а,в,д"
+        )
         return
+
     excel_file = create_excel(questions)
     await update.message.reply_document(
         document=InputFile(excel_file, filename="quiz.xlsx"),
@@ -92,6 +118,7 @@ async def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
+    logger.info(f"Пытаемся установить webhook: {WEBHOOK_URL}")
     await app.bot.set_webhook(WEBHOOK_URL)
     logger.info(f"Webhook установлен: {WEBHOOK_URL}")
 
@@ -100,8 +127,6 @@ async def main():
         port=int(os.environ.get("PORT", 10000)),
         webhook_url=WEBHOOK_URL,
     )
-
-import nest_asyncio
 
 if __name__ == "__main__":
     nest_asyncio.apply()
