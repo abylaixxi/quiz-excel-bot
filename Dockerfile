@@ -17,5 +17,8 @@ COPY . .
 # Устанавливаем Python-зависимости
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Указываем порт для Render (очень важно!)
+EXPOSE 10000
+
 # Запускаем скрипт
 CMD ["python", "main.py"]
