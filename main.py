@@ -1,13 +1,14 @@
 import os
 import logging
 import asyncio
-from telegram import Update, InputFile
-from telegram.ext import Application, MessageHandler, ContextTypes, filters
-from openpyxl import Workbook
-from io import BytesIO
 import re
-
-from telegram.ext import ApplicationBuilder
+from io import BytesIO
+from openpyxl import Workbook
+from telegram import Update, InputFile
+from telegram.ext import (
+    Application, ApplicationBuilder,
+    ContextTypes, MessageHandler, filters
+)
 import nest_asyncio
 
 nest_asyncio.apply()
@@ -94,12 +95,15 @@ async def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
+    # Установка Webhook
     await app.bot.set_webhook(url=WEBHOOK_URL)
     logging.info(f"Webhook установлен: {WEBHOOK_URL}")
-    
+
+    # Запуск Webhook-сервера
     await app.run_webhook(
         listen="0.0.0.0",
         port=int(os.environ.get("PORT", 10000)),
+        webhook_path="/webhook",
         webhook_url=WEBHOOK_URL
     )
 
