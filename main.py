@@ -13,6 +13,7 @@ nest_asyncio.apply()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+print(f"WEBHOOK_URL = {WEBHOOK_URL}")  # временно для отладки
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
