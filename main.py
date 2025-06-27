@@ -2,27 +2,20 @@ import os
 import logging
 import asyncio
 from telegram import Update, InputFile
-from telegram.ext import Application, MessageHandler, ContextTypes, filters
+from telegram.ext import ApplicationBuilder, MessageHandler, ContextTypes, filters
 from openpyxl import Workbook
 from io import BytesIO
 import re
 
-from telegram.ext import ApplicationBuilder
-import nest_asyncio
-nest_asyncio.apply()
-
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
-print(f"WEBHOOK_URL = {WEBHOOK_URL}")  # временно для отладки
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-
 def parse_quiz(text):
     questions = []
     blocks = re.split(r'\n{2,}', text.strip())
-
     for block in blocks:
         lines = block.strip().split('\n')
         if not lines:
@@ -66,7 +59,6 @@ def parse_quiz(text):
         questions.append([question_text, qtype] + options[:5] + [correct_index])
     return questions
 
-
 def create_excel(questions):
     wb = Workbook()
     ws = wb.active
@@ -81,7 +73,6 @@ def create_excel(questions):
     buffer.seek(0)
     return buffer
 
-
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     questions = parse_quiz(text)
@@ -94,21 +85,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         caption="✅ Ваш тест готов!"
     )
 
-
 async def main():
-    app = Application.builder().token(BOT_TOKEN).build()
+    if not BOT_TOKEN or not WEBHOOK_URL:
+        raise ValueError("BOT_TOKEN и WEBHOOK_URL должны быть установлены в переменных окружения")
+
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    await app.bot.set_webhook(url=WEBHOOK_URL)
-    logging.info(f"Webhook установлен: {WEBHOOK_URL}")
+    await app.bot.set_webhook(WEBHOOK_URL)
+    logger.info(f"Webhook установлен: {WEBHOOK_URL}")
 
     await app.run_webhook(
         listen="0.0.0.0",
-        port=int(os.getenv("PORT", 10000)),
-        url_path="webhook"
+        port=int(os.environ.get("PORT", 10000)),
+        webhook_url=WEBHOOK_URL,
     )
-
-
 
 if __name__ == "__main__":
     asyncio.run(main())
