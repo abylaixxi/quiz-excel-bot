@@ -1,14 +1,11 @@
 import os
 import logging
 import asyncio
-import re
-from io import BytesIO
-from openpyxl import Workbook
 from telegram import Update, InputFile
-from telegram.ext import (
-    Application, ApplicationBuilder,
-    ContextTypes, MessageHandler, filters
-)
+from telegram.ext import Application, MessageHandler, ContextTypes, filters
+from openpyxl import Workbook
+from io import BytesIO
+import re
 import nest_asyncio
 
 nest_asyncio.apply()
@@ -21,7 +18,6 @@ logging.basicConfig(level=logging.INFO)
 def parse_quiz(text):
     questions = []
     blocks = re.split(r'\n{2,}', text.strip())
-
     for block in blocks:
         lines = block.strip().split('\n')
         if not lines:
@@ -92,20 +88,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def main():
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    # Установка Webhook
     await app.bot.set_webhook(url=WEBHOOK_URL)
     logging.info(f"Webhook установлен: {WEBHOOK_URL}")
 
-    # Запуск Webhook-сервера
     await app.run_webhook(
         listen="0.0.0.0",
         port=int(os.environ.get("PORT", 10000)),
-        webhook_path="/webhook",
-        webhook_url=WEBHOOK_URL
+        url_path="",  # webhook_path нельзя — PTB 20.8 больше не использует
     )
 
 if __name__ == "__main__":
-    asyncio.get_event_loop().run_until_complete(main())
+    asyncio.run(main())
