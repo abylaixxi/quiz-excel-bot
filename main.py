@@ -4,12 +4,18 @@ import asyncio
 from telegram import Update, InputFile
 from telegram.ext import Application, MessageHandler, ContextTypes, filters
 from openpyxl import Workbook
-import re
 from io import BytesIO
+import re
+
+from telegram.ext import ApplicationBuilder
+import nest_asyncio
+
+nest_asyncio.apply()
+
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
 logging.basicConfig(level=logging.INFO)
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
-APP_URL = os.environ.get("APP_URL")  # Пример: https://quiz-excel-bot.onrender.com
 
 def parse_quiz(text):
     questions = []
@@ -25,7 +31,7 @@ def parse_quiz(text):
         correct_raw = ""
 
         for line in lines[1:]:
-            if re.match(r'^(ответ|answer|правильный ответ)[:\-]?', line.strip().lower()):
+            if re.match(r'^(ответ|правильный ответ|answer)[:\-]?', line.strip().lower()):
                 correct_raw = line.split(':', 1)[-1].strip()
             elif re.match(r'^[aаbбвcгdеe]\)', line.strip().lower()):
                 options.append(re.sub(r'^[aаbбвcгdеe]\)\s*', '', line.strip(), flags=re.I))
@@ -33,7 +39,7 @@ def parse_quiz(text):
                 options.append(line.strip())
 
         if not options:
-            qtype = "Fill-in-the-Blank" if correct_raw else "Open-Ended"
+            qtype = "Open-Ended" if not correct_raw else "Fill-in-the-Blank"
         elif ',' in correct_raw:
             qtype = "Checkbox"
         elif correct_raw:
@@ -49,6 +55,7 @@ def parse_quiz(text):
                 correct_index.append(index[ans])
             elif ans.isdigit():
                 correct_index.append(int(ans))
+
         correct_index = ','.join(map(str, correct_index)) if correct_index else ""
 
         while len(options) < 5:
@@ -66,7 +73,6 @@ def create_excel(questions):
     ])
     for q in questions:
         ws.append(q)
-
     buffer = BytesIO()
     wb.save(buffer)
     buffer.seek(0)
@@ -76,13 +82,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     questions = parse_quiz(text)
     if not questions:
-        await update.message.reply_text(
-            "❗ Неверный формат. Пример:\n\n"
-            "1. Кто написал «Войну и мир»?\n"
-            "а) Чехов\nб) Пушкин\nв) Толстой\nОтвет: в"
-        )
+        await update.message.reply_text("❌ Формат не распознан. Отправь вопросы по образцу.")
         return
-
     excel_file = create_excel(questions)
     await update.message.reply_document(
         document=InputFile(excel_file, filename="quiz.xlsx"),
@@ -90,22 +91,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def main():
-    app = Application.builder().token(BOT_TOKEN).build()
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    webhook_url = f"{APP_URL}/webhook"
-    await app.bot.set_webhook(webhook_url)
-
-    logging.info(f"Webhook установлен: {webhook_url}")
-
+    await app.bot.set_webhook(url=WEBHOOK_URL)
+    logging.info(f"Webhook установлен: {WEBHOOK_URL}")
+    
     await app.run_webhook(
         listen="0.0.0.0",
         port=int(os.environ.get("PORT", 10000)),
-        webhook_url=webhook_url
+        webhook_url=WEBHOOK_URL
     )
 
 if __name__ == "__main__":
-    import nest_asyncio
-    nest_asyncio.apply()
     asyncio.get_event_loop().run_until_complete(main())
-
