@@ -2,7 +2,7 @@ import os
 import logging
 import asyncio
 from telegram import Update, InputFile
-from telegram.ext import ApplicationBuilder, MessageHandler, ContextTypes, filters
+from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, ContextTypes, filters
 from openpyxl import Workbook
 from io import BytesIO
 import re
@@ -35,7 +35,6 @@ def parse_quiz(text):
             else:
                 options.append(line.strip())
 
-        # ❗ Пропускаем, если нет текста и нет ни вариантов, ни ответа
         if not question_text or (not options and not correct_raw):
             continue
 
@@ -111,11 +110,40 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         caption="✅ Ваш тест готов!"
     )
 
+async def preview_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("❌ Пожалуйста, отправьте текст теста после команды /preview.")
+        return
+
+    text = " ".join(context.args)
+    questions = parse_quiz(text)
+
+    if not questions:
+        await update.message.reply_text(
+            "❌ Не удалось распознать ни одного вопроса.\n\n"
+            "Пример:\n"
+            "1. Кто написал «Войну и мир»?\nа) Чехов\nб) Пушкин\nв) Толстой\nОтвет: в"
+        )
+        return
+
+    preview_lines = [f"✅ Распознано вопросов: {len(questions)}\n"]
+    for i, q in enumerate(questions[:5], start=1):  # Покажем до 5 вопросов
+        preview_lines.append(f"{i}. {q[0]}")
+    if len(questions) > 5:
+        preview_lines.append("...")
+
+    preview_lines.append("\nОтправь этот текст обычным сообщением, чтобы получить Excel 📄")
+
+    await update.message.reply_text("\n".join(preview_lines))
+
 async def main():
     if not BOT_TOKEN or not WEBHOOK_URL:
         raise ValueError("BOT_TOKEN и WEBHOOK_URL должны быть установлены в переменных окружения")
 
     app = ApplicationBuilder().token(BOT_TOKEN).build()
+
+    # Обработчики
+    app.add_handler(CommandHandler("preview", preview_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     logger.info(f"Пытаемся установить webhook: {WEBHOOK_URL}")
