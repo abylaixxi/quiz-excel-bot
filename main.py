@@ -1,5 +1,6 @@
 import os
 import logging
+import asyncio
 from telegram import Update, InputFile
 from telegram.ext import Application, MessageHandler, ContextTypes, filters
 from openpyxl import Workbook
@@ -9,7 +10,7 @@ from io import BytesIO
 logging.basicConfig(level=logging.INFO)
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
-APP_URL = os.environ.get("APP_URL")  # добавим URL из Render
+APP_URL = os.environ.get("APP_URL")  # Пример: https://your-app.onrender.com
 
 def parse_quiz(text):
     questions = []
@@ -76,7 +77,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     questions = parse_quiz(text)
     if not questions:
-        await update.message.reply_text("❗ Ошибка: не удалось распознать тест. Попробуйте другой формат.")
+        await update.message.reply_text("❗ Ошибка: не удалось распознать тест. Пример:\n\n1. Кто написал «Войну и мир»?\nа) Чехов\nб) Пушкин\nв) Толстой\nОтвет: в")
         return
 
     excel_file = create_excel(questions)
@@ -85,24 +86,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         caption="✅ Ваш тест готов!"
     )
 
-async def set_webhook(app_url, bot_token, application):
-    webhook_url = f"{app_url}/webhook"
-    await application.bot.set_webhook(webhook_url)
-    logging.info(f"Webhook установлен: {webhook_url}")
-
-def main():
+async def main():
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    async def start():
-        await set_webhook(APP_URL, BOT_TOKEN, app)
+    webhook_url = f"{APP_URL}/webhook"
+    await app.bot.set_webhook(webhook_url)
 
-    app.run_webhook(
+    logging.info(f"Webhook установлен: {webhook_url}")
+
+    await app.run_webhook(
         listen="0.0.0.0",
         port=int(os.environ.get("PORT", 10000)),
-        webhook_path="/webhook",
-        on_startup=start
+        webhook_path="/webhook"
     )
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
