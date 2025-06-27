@@ -95,19 +95,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def main():
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    # Устанавливаем webhook
     await app.bot.set_webhook(url=WEBHOOK_URL)
-    logger.info(f"Webhook установлен: {WEBHOOK_URL}")
+    logging.info(f"Webhook установлен: {WEBHOOK_URL}")
 
-    # Запускаем вебхук-сервер
     await app.run_webhook(
         listen="0.0.0.0",
-        port=int(os.environ.get("PORT", 10000)),
+        port=int(os.getenv("PORT", 10000)),
         url_path="webhook"
     )
+
 
 
 if __name__ == "__main__":
