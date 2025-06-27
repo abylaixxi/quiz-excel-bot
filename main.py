@@ -8,9 +8,8 @@ import re
 from io import BytesIO
 
 logging.basicConfig(level=logging.INFO)
-
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
-APP_URL = os.environ.get("APP_URL")  # Пример: https://your-app.onrender.com
+APP_URL = os.environ.get("APP_URL")  # Пример: https://quiz-excel-bot.onrender.com
 
 def parse_quiz(text):
     questions = []
@@ -77,7 +76,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     questions = parse_quiz(text)
     if not questions:
-        await update.message.reply_text("❗ Ошибка: не удалось распознать тест. Пример:\n\n1. Кто написал «Войну и мир»?\nа) Чехов\nб) Пушкин\nв) Толстой\nОтвет: в")
+        await update.message.reply_text(
+            "❗ Неверный формат. Пример:\n\n"
+            "1. Кто написал «Войну и мир»?\n"
+            "а) Чехов\nб) Пушкин\nв) Толстой\nОтвет: в"
+        )
         return
 
     excel_file = create_excel(questions)
@@ -98,7 +101,7 @@ async def main():
     await app.run_webhook(
         listen="0.0.0.0",
         port=int(os.environ.get("PORT", 10000)),
-        webhook_path="/webhook"
+        webhook_url=webhook_url
     )
 
 if __name__ == "__main__":
