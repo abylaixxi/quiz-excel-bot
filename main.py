@@ -3,7 +3,8 @@ import logging
 import asyncio
 from telegram import Update, InputFile
 from telegram.ext import (
-    ApplicationBuilder, MessageHandler, CommandHandler, ContextTypes, filters
+    ApplicationBuilder, MessageHandler, CommandHandler,
+    ContextTypes, filters
 )
 from openpyxl import Workbook
 from io import BytesIO
@@ -26,7 +27,7 @@ def parse_quiz(text):
     blocks = re.split(r'\n{2,}', text.strip())
 
     for block in blocks:
-        lines = block.strip().split('\n')
+        lines = block.strip().split("\n")
         if not lines:
             continue
 
@@ -35,14 +36,25 @@ def parse_quiz(text):
         correct_raw = ""
 
         for line in lines[1:]:
-            if re.match(r'^(ответ|правильный ответ|answer)[:\-]?', line.strip().lower()):
-                correct_raw = line.split(':', 1)[-1].strip()
-            elif re.match(r'^[aаbбвcгdеe]\)', line.strip().lower()):
-                options.append(re.sub(r'^[aаbбвcгdеe]\)\s*', '', line.strip(), flags=re.I))
-            else:
-                options.append(line.strip())
+            l = line.strip()
+            # поиск строки правильного ответа
+            if re.match(r'^(ответ|правильный ответ|answer)[:\-]?', l.lower()):
+                correct_raw = l.split(':', 1)[-1].strip()
+                continue
 
-        if not question_text or (not options and not correct_raw):
+            # Опции A), B), C)...
+            if re.match(r'^[aаbбвcгdдеe]\)', l.lower()):
+                options.append(re.sub(r'^[aаbбвcгdдеe]\)\s*', '', l, flags=re.I))
+                continue
+
+            # если просто текст — добавляем как опцию (редкий случай)
+            options.append(l)
+
+        if not question_text:
+            continue
+
+        # Определение типа вопроса
+        if not options and not correct_raw:
             continue
 
         if not options:
@@ -54,26 +66,31 @@ def parse_quiz(text):
         else:
             qtype = "Poll"
 
+        # Индексы правильных ответов
         correct_index = []
+        index_map = {'а': 1, 'б': 2, 'в': 3, 'г': 4, 'д': 5,
+                     'a': 1, 'b': 2, 'c': 3, 'd': 4, 'e': 5}
+
         for ans in re.split(r'[,\s]+', correct_raw):
             ans = ans.lower().strip()
-            index = {'а': 1, 'б': 2, 'в': 3, 'г': 4, 'д': 5, 'a': 1, 'b': 2, 'c': 3, 'd': 4, 'e': 5}
-            if ans in index:
-                correct_index.append(index[ans])
+            if ans in index_map:
+                correct_index.append(index_map[ans])
             elif ans.isdigit():
                 correct_index.append(int(ans))
 
-        correct_index = ','.join(map(str, correct_index)) if correct_index else ""
+        correct_index = ",".join(map(str, correct_index)) if correct_index else ""
 
+        # Опций должно быть ровно 5
         while len(options) < 5:
             options.append("")
 
         questions.append([question_text, qtype] + options[:5] + [correct_index])
+
     return questions
 
 
 # ======================
-#   СОЗДАНИЕ EXCEL
+#   СОЗДАНИЕ ФАЙЛА EXCEL
 # ======================
 
 def create_excel(questions):
@@ -83,6 +100,7 @@ def create_excel(questions):
         "Question Text", "Question Type", "Option 1", "Option 2", "Option 3",
         "Option 4", "Option 5", "Correct Answer"
     ])
+
     for q in questions:
         ws.append(q)
 
@@ -93,23 +111,29 @@ def create_excel(questions):
 
 
 # ======================
-#   КОМАНДЫ
+#   КОМАНДЫ БОТА
 # ======================
 
 async def start_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["quiz_buffer"] = ""
     await update.message.reply_text(
-        "📝 Режим загрузки теста включён!\n"
-        "Отправляй вопросы частями.\n"
-        "Когда закончишь — напиши: /done"
+        "📝 Режим загрузки теста активирован!\n"
+        "Отправляйте вопросы частями.\n"
+        "Когда закончите — напишите: /done\n\n"
+        "Чтобы очистить буфер: /reset"
     )
+
+
+async def reset_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["quiz_buffer"] = ""
+    await update.message.reply_text("♻️ Буфер очищен.")
 
 
 async def finish_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
     full_text = context.user_data.get("quiz_buffer", "")
 
     if not full_text.strip():
-        await update.message.reply_text("❌ Нет данных. Сначала отправь вопросы с помощью /startquiz")
+        await update.message.reply_text("❌ Нет данных. Используйте /startquiz для начала.")
         return
 
     questions = parse_quiz(full_text)
@@ -120,6 +144,7 @@ async def finish_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     excel_file = create_excel(questions)
+
     await update.message.reply_document(
         document=InputFile(excel_file, filename="quiz.xlsx"),
         caption="✅ Все вопросы обработаны одним файлом!"
@@ -129,30 +154,38 @@ async def finish_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def collect_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Тихое накопление сообщений без ответов,
+    чтобы Telegram не спамил и не делил длинные тексты.
+    """
     if "quiz_buffer" not in context.user_data:
-        return await update.message.reply_text("❗ Используй команду /startquiz перед отправкой теста.")
+        return await update.message.reply_text(
+            "❗ Перед отправкой теста введите команду /startquiz"
+        )
 
-    text = update.message.text
-    context.user_data["quiz_buffer"] += "\n" + text
+    chunk = update.message.text.strip()
 
-    await update.message.reply_text("📥 Добавлено! Продолжай или напиши /done")
+    # добавляем аккуратно
+    existing = context.user_data.get("quiz_buffer", "")
+    context.user_data["quiz_buffer"] = existing + "\n" + chunk
 
 
 # ======================
-#   ОСНОВНОЙ КОД
+#   ОСНОВНОЙ ЗАПУСК
 # ======================
 
 async def main():
     if not BOT_TOKEN or not WEBHOOK_URL:
-        raise ValueError("BOT_TOKEN и WEBHOOK_URL должны быть установлены в переменных окружения")
+        raise ValueError("BOT_TOKEN и WEBHOOK_URL должны быть заданы")
 
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("startquiz", start_quiz))
     app.add_handler(CommandHandler("done", finish_quiz))
+    app.add_handler(CommandHandler("reset", reset_quiz))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, collect_text))
 
-    logger.info(f"Пытаемся установить webhook: {WEBHOOK_URL}")
+    logger.info(f"Устанавливаем webhook: {WEBHOOK_URL}")
     await app.bot.set_webhook(WEBHOOK_URL)
     logger.info("Webhook установлен!")
 
